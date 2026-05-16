@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0b0b0d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="當沖掃描" />
+  <title>當沖掃描 — Opening Volume Burst</title>
+
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
+
+  <script>
+    (function () {
+      const h = location.hostname;
+      const isLocal = h === '127.0.0.1' || h === 'localhost' || h === '';
+      window.API_BASES = isLocal
+        ? ['http://127.0.0.1:8080']
+        : ['https://renegade-silliness-stony.ngrok-free.dev'];
+    })();
+  </script>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0b0b0d;
+      --bg-soft: #14141a;
+      --brand: #ff6b35;
+      --brand-dim: rgba(255, 107, 53, 0.18);
+      --up: #ff3b30;
+      --down: #00c853;
+      --text: #f5f5f7;
+      --text-dim: #98989f;
+      --text-faint: #5e5e66;
+      --surface: rgba(28, 28, 32, 0.72);
+      --hairline: rgba(255, 255, 255, 0.08);
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; height: 100%; overscroll-behavior-y: contain;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC",
+                   "Helvetica Neue", Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: -0.01em;
+    }
+    body::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: -1;
+      background: radial-gradient(ellipse 80% 50% at 50% 0%,
+                  rgba(255, 107, 53, 0.18), transparent 70%);
+    }
+    .num { font-variant-numeric: tabular-nums; }
+    .mono { font-family: "SF Mono", ui-monospace, "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; }
+
+    #root {
+      min-height: 100dvh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    .app {
+      max-width: 480px; margin: 0 auto; padding: 16px 14px 32px;
+    }
+
+    /* Header */
+    .header {
+      padding: 14px 4px 18px;
+    }
+    .title-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .title {
+      font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--text);
+    }
+    .title em {
+      color: var(--brand); font-style: normal;
+    }
+    .subtitle {
+      font-size: 13px; color: var(--text-dim); margin-top: 4px;
+    }
+
+    /* Status pill row */
+    .status-row {
+      margin: 14px 0 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-radius: 999px;
+      background: var(--surface); backdrop-filter: blur(20px) saturate(140%);
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
+      border: 1px solid var(--hairline); font-size: 12px; color: var(--text-dim);
+    }
+    .pill .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+    .pill.open  .dot { background: var(--up); box-shadow: 0 0 8px var(--up); }
+    .pill.close .dot { background: var(--text-faint); }
+    .pill.pre   .dot { background: var(--brand); }
+    .pill .label { color: var(--text); font-weight: 500; }
+    .pill .num { color: var(--text-dim); }
+    .pill.tap { cursor: pointer; }
+    .pill.tap:active { transform: scale(0.97); }
+
+    /* Threshold control */
+    .threshold-card {
+      margin: 16px 0 18px;
+      background: var(--surface); backdrop-filter: blur(24px) saturate(140%);
+      -webkit-backdrop-filter: blur(24px) saturate(140%);
+      border: 1px solid var(--hairline); border-radius: 16px;
+      padding: 14px 16px; box-shadow: var(--shadow);
+    }
+    .threshold-head {
+      display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px;
+    }
+    .threshold-label {
+      font-size: 13px; color: var(--text-dim);
+    }
+    .threshold-value {
+      font-size: 28px; font-weight: 700; color: var(--brand); letter-spacing: -0.02em;
+    }
+    .threshold-value small {
+      font-size: 13px; color: var(--text-dim); font-weight: 500; margin-left: 4px;
+    }
+    .slider {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; height: 6px; border-radius: 3px;
+      background: linear-gradient(to right, var(--brand) 0%, var(--brand) var(--pct, 0%), rgba(255,255,255,0.1) var(--pct, 0%), rgba(255,255,255,0.1) 100%);
+      outline: none;
+    }
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--brand); cursor: pointer;
+      box-shadow: 0 2px 8px rgba(255, 107, 53, 0.5);
+      border: 2px solid #fff;
+    }
+    .slider-ticks {
+      display: flex; justify-content: space-between; margin-top: 6px;
+      font-size: 11px; color: var(--text-faint);
+    }
+
+    /* List */
+    .list-head {
+      margin: 18px 4px 8px; display: flex; align-items: baseline; justify-content: space-between;
+    }
+    .list-title {
+      font-size: 13px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .list-count {
+      font-size: 13px; color: var(--text-faint);
+    }
+    .list-count em { color: var(--brand); font-style: normal; font-weight: 600; }
+
+    /* Hit card */
+    .hit {
+      background: var(--surface); backdrop-filter: blur(24px) saturate(140%);
+      -webkit-backdrop-filter: blur(24px) saturate(140%);
+      border: 1px solid var(--hairline); border-radius: 16px;
+      padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px;
+      box-shadow: var(--shadow);
+    }
+    .hit-ratio {
+      flex: 0 0 78px; text-align: center;
+      background: var(--brand-dim); border: 1px solid var(--brand);
+      border-radius: 12px; padding: 8px 4px;
+    }
+    .hit-ratio .v {
+      font-size: 24px; font-weight: 700; color: var(--brand); line-height: 1;
+    }
+    .hit-ratio .u {
+      font-size: 11px; color: var(--brand); opacity: 0.7; margin-top: 2px;
+    }
+    .hit-mid {
+      flex: 1; min-width: 0;
+    }
+    .hit-name {
+      font-size: 17px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .hit-id {
+      font-size: 12px; color: var(--text-dim); margin-left: 6px; font-weight: 500;
+    }
+    .hit-vol {
+      font-size: 12px; color: var(--text-dim); margin-top: 4px;
+    }
+    .hit-vol .sep { margin: 0 6px; opacity: 0.5; }
+    .hit-right { flex: 0 0 auto; text-align: right; }
+    .hit-price {
+      font-size: 16px; font-weight: 600;
+    }
+    .hit-change {
+      font-size: 13px; margin-top: 2px;
+    }
+    .hit-change.up { color: var(--up); }
+    .hit-change.down { color: var(--down); }
+    .hit-change.flat { color: var(--text-dim); }
+
+    /* States */
+    .state {
+      padding: 56px 24px; text-align: center; color: var(--text-dim);
+    }
+    .state-emoji { font-size: 40px; margin-bottom: 12px; opacity: 0.7; }
+    .state-title { font-size: 16px; color: var(--text); font-weight: 600; margin-bottom: 6px; }
+    .state-body { font-size: 13px; line-height: 1.6; max-width: 320px; margin: 0 auto; }
+
+    .btn-retry {
+      margin-top: 16px; padding: 10px 18px; border-radius: 999px;
+      background: var(--brand); color: #fff; font-size: 14px; font-weight: 600;
+      border: none; cursor: pointer;
+    }
+    .btn-retry:active { transform: scale(0.97); }
+
+    /* Loading */
+    .skel { background: linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+            background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px; }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Refresh spinner */
+    .spin {
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.18); border-top-color: var(--brand);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Footer */
+    .footer {
+      margin-top: 32px; padding: 16px 4px; text-align: center; font-size: 11px;
+      color: var(--text-faint); border-top: 1px solid var(--hairline);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react,env">
+    const { useState, useEffect, useRef, useCallback } = React;
+    const API_BASES = window.API_BASES;
+
+    function apiFetch(path) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 30000);
+      const tryBase = async (i) => {
+        if (i >= API_BASES.length) throw new Error('all bases failed');
+        try {
+          const r = await fetch(API_BASES[i] + path, {
+            signal: ctl.signal,
+            headers: { 'ngrok-skip-browser-warning': '1' },
+          });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return await r.json();
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+          return tryBase(i + 1);
+        }
+      };
+      return tryBase(0).finally(() => clearTimeout(timer));
+    }
+
+    function fmtVol(v) {
+      if (!v && v !== 0) return '—';
+      if (v >= 1e8) return (v / 1e8).toFixed(2) + '億';
+      if (v >= 1e4) return Math.round(v / 1e4).toLocaleString() + '萬';
+      return v.toLocaleString();
+    }
+
+    function fmtPrice(p) {
+      if (p == null) return '—';
+      return p.toFixed(2);
+    }
+
+    function fmtRelative(ts) {
+      if (!ts) return '';
+      const sec = Math.floor((Date.now() - ts) / 1000);
+      if (sec < 5) return '剛剛';
+      if (sec < 60) return `${sec} 秒前`;
+      if (sec < 3600) return `${Math.floor(sec / 60)} 分前`;
+      return `${Math.floor(sec / 3600)} 小時前`;
+    }
+
+    function useTick(ms) {
+      const [, set] = useState(0);
+      useEffect(() => {
+        const t = setInterval(() => set(n => n + 1), ms);
+        return () => clearInterval(t);
+      }, [ms]);
+    }
+
+    function MarketPill({ status, marketOpen }) {
+      let label, cls, emoji;
+      if (status === 'pre-market') { label = '盤前'; cls = 'pre'; }
+      else if (marketOpen) { label = '盤中'; cls = 'open'; }
+      else { label = '盤後'; cls = 'close'; }
+      return (
+        <span className={`pill ${cls}`}>
+          <span className="dot" /><span className="label">{label}</span>
+        </span>
+      );
+    }
+
+    function ThresholdCard({ value, onChange }) {
+      const pct = ((value - 1.5) / (10 - 1.5)) * 100;
+      return (
+        <div className="threshold-card">
+          <div className="threshold-head">
+            <span className="threshold-label">量比門檻</span>
+            <span className="threshold-value num">
+              {value.toFixed(1)}<small>倍</small>
+            </span>
+          </div>
+          <input
+            type="range" className="slider"
+            min="1.5" max="10" step="0.5"
+            value={value}
+            onChange={(e) => onChange(parseFloat(e.target.value))}
+            style={{ '--pct': pct + '%' }}
+          />
+          <div className="slider-ticks">
+            <span>1.5x</span><span>3x</span><span>5x</span><span>7x</span><span>10x</span>
+          </div>
+        </div>
+      );
+    }
+
+    function HitCard({ hit }) {
+      const cp = hit.change_pct;
+      let chgCls = 'flat', chgTxt = '0.00%';
+      if (cp != null) {
+        if (cp > 0) { chgCls = 'up'; chgTxt = `+${cp.toFixed(2)}%`; }
+        else if (cp < 0) { chgCls = 'down'; chgTxt = `${cp.toFixed(2)}%`; }
+      }
+      return (
+        <div className="hit">
+          <div className="hit-ratio">
+            <div className="v num">{hit.volume_ratio.toFixed(1)}</div>
+            <div className="u">倍量</div>
+          </div>
+          <div className="hit-mid">
+            <div className="hit-name">{hit.name}<span className="hit-id mono">{hit.id}</span></div>
+            <div className="hit-vol mono">
+              {fmtVol(hit.today_volume)}
+              <span className="sep">/</span>
+              均 {fmtVol(hit.baseline_volume)}
+            </div>
+          </div>
+          <div className="hit-right">
+            <div className="hit-price num">{fmtPrice(hit.price)}</div>
+            <div className={`hit-change num ${chgCls}`}>{chgTxt}</div>
+          </div>
+        </div>
+      );
+    }
+
+    function State({ emoji, title, body, action }) {
+      return (
+        <div className="state">
+          <div className="state-emoji">{emoji}</div>
+          <div className="state-title">{title}</div>
+          <div className="state-body">{body}</div>
+          {action}
+        </div>
+      );
+    }
+
+    function App() {
+      const [hits, setHits] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [refreshing, setRefreshing] = useState(false);
+      const [error, setError] = useState(null);
+      const [threshold, setThreshold] = useState(3.0);
+      const [status, setStatus] = useState(null);
+      const [marketOpen, setMarketOpen] = useState(false);
+      const [universeSize, setUniverseSize] = useState(50);
+      const [lastFetch, setLastFetch] = useState(null);
+      const [untilTime, setUntilTime] = useState(null);
+      const [dataDate, setDataDate] = useState(null);
+
+      useTick(5000);
+
+      const reqIdRef = useRef(0);
+
+      const load = useCallback(async (t, isAuto = false) => {
+        const id = ++reqIdRef.current;
+        if (isAuto) setRefreshing(true); else setLoading(true);
+        setError(null);
+        try {
+          const d = await apiFetch(`/api/daytrade/scan/opening-volume-burst?threshold=${t.toFixed(1)}`);
+          if (id !== reqIdRef.current) return;
+          setStatus(d.status);
+          setHits(d.hits || []);
+          setMarketOpen(!!d.market_open);
+          if (d.universe_size) setUniverseSize(d.universe_size);
+          setLastFetch(Date.now());
+          setUntilTime(d.until_time || null);
+          const firstDate = (d.hits || [])[0]?.data_date;
+          if (firstDate) setDataDate(firstDate);
+        } catch (e) {
+          if (id !== reqIdRef.current) return;
+          setError(e?.message || String(e));
+        } finally {
+          if (id === reqIdRef.current) {
+            setLoading(false); setRefreshing(false);
+          }
+        }
+      }, []);
+
+      useEffect(() => { load(threshold, false); }, []);
+
+      useEffect(() => {
+        const t = setTimeout(() => load(threshold, false), 350);
+        return () => clearTimeout(t);
+      }, [threshold]);
+
+      useEffect(() => {
+        if (!marketOpen) return;
+        const iv = setInterval(() => load(threshold, true), 60_000);
+        return () => clearInterval(iv);
+      }, [marketOpen, threshold, load]);
+
+      const renderBody = () => {
+        if (loading && hits.length === 0) {
+          return (
+            <>
+              <div className="hit"><div style={{flex:1, height:60}} className="skel" /></div>
+              <div className="hit"><div style={{flex:1, height:60}} className="skel" /></div>
+              <div className="hit"><div style={{flex:1, height:60}} className="skel" /></div>
+            </>
+          );
+        }
+        if (error) {
+          return <State emoji="⚠️" title="連線失敗"
+            body={`無法連到 Mac backend。確認 Mac 開機 + ngrok 在跑。\n錯誤: ${error}`}
+            action={<button className="btn-retry" onClick={() => load(threshold, false)}>重試</button>}
+          />;
+        }
+        if (status === 'render-not-supported') {
+          return <State emoji="🔌" title="Mac backend 不可用"
+            body="當沖掃描需 yfinance 即時資料源，Render 上資料源被擋。請確認 Mac+ngrok 在線。"
+            action={<button className="btn-retry" onClick={() => load(threshold, false)}>重試</button>}
+          />;
+        }
+        if (status === 'pre-market') {
+          return <State emoji="⏰" title="盤前集合競價中"
+            body="9:05 後開始有資料。9:00-9:05 集合競價成交後、量能還不足以判斷。" />;
+        }
+        if (hits.length === 0) {
+          const hint = marketOpen
+            ? `這個門檻下還沒有股票觸發。試試降低量比，或等量能累積。`
+            : `${dataDate ? dataDate + ' 收盤' : '最近交易日'}全日量比未達 ${threshold.toFixed(1)} 倍。試試降低門檻。`;
+          return <State emoji="🌙" title="目前沒有命中" body={hint} />;
+        }
+        return hits.map(h => <HitCard key={h.id} hit={h} />);
+      };
+
+      return (
+        <div className="app">
+          <div className="header">
+            <div className="title-row">
+              <div className="title">當沖<em>掃描</em></div>
+              {refreshing && <span className="spin" />}
+            </div>
+            <div className="subtitle">開盤量比爆量 — 台灣 50 ({universeSize})</div>
+
+            <div className="status-row">
+              <MarketPill status={status} marketOpen={marketOpen} />
+              {untilTime && (
+                <span className="pill">
+                  <span className="label num">{untilTime}</span>
+                </span>
+              )}
+              <span className="pill tap" onClick={() => load(threshold, false)}>
+                <span className="num">{lastFetch ? fmtRelative(lastFetch) : '—'}</span>
+              </span>
+              {dataDate && !marketOpen && (
+                <span className="pill">
+                  <span className="num">{dataDate}</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          <ThresholdCard value={threshold} onChange={setThreshold} />
+
+          <div className="list-head">
+            <span className="list-title">命中列表</span>
+            <span className="list-count">
+              <em>{hits.length}</em> 檔 / {universeSize}
+            </span>
+          </div>
+
+          {renderBody()}
+
+          <div className="footer">
+            開盤量 ÷ 過去 5 交易日同時段均量 ≥ {threshold.toFixed(1)} 倍 · 60s 自動刷新
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
