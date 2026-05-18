@@ -113,6 +113,12 @@
     .pill .num { color: var(--text-dim); }
     .pill.tap { cursor: pointer; }
     .pill.tap:active { transform: scale(0.97); }
+    .pill.notif-cta {
+      background: var(--brand-dim); border-color: var(--brand);
+    }
+    .pill.notif-cta .label { color: var(--brand); }
+    .pill.notif-on .label { color: var(--up); }
+    .pill.notif-off .label { color: var(--text-faint); }
 
     /* Threshold control */
     .threshold-card {
@@ -390,9 +396,50 @@
       const [untilTime, setUntilTime] = useState(null);
       const [dataDate, setDataDate] = useState(null);
 
+      const [notifPerm, setNotifPerm] = useState(
+        typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+      );
+
       useTick(5000);
 
-      const reqIdRef = useRef(0);
+      const reqIdRef     = useRef(0);
+      const seenHitsRef  = useRef(new Set());
+      const firstLoadRef = useRef(true);
+
+      // 通知 effect — 偵測新命中（不在已知 set 裡）就彈 Notification
+      // 初次載入：populate set、不發通知（避免每次開 app 一次彈一堆）
+      useEffect(() => {
+        if (firstLoadRef.current) {
+          firstLoadRef.current = false;
+          hits.forEach(h => seenHitsRef.current.add(h.id));
+          return;
+        }
+        if (notifPerm !== 'granted' || !marketOpen) return;
+
+        const newHits = hits.filter(h => !seenHitsRef.current.has(h.id));
+        newHits.forEach(h => {
+          seenHitsRef.current.add(h.id);
+          try {
+            const chg = h.change_pct;
+            const chgStr = chg == null ? '' : (chg >= 0 ? ` +${chg.toFixed(2)}%` : ` ${chg.toFixed(2)}%`);
+            new Notification('🔥 開盤量比爆量', {
+              body:  `${h.id} ${h.name}  量比 ${h.volume_ratio.toFixed(2)}x${chgStr}`,
+              tag:   `daytrade-${h.id}`,
+              icon:  '/icon-192.png',
+              badge: '/icon-192.png',
+              silent: false,
+            });
+          } catch (e) { /* iOS Safari may throw outside PWA */ }
+        });
+      }, [hits, notifPerm, marketOpen]);
+
+      const requestNotif = async () => {
+        if (typeof Notification === 'undefined') return;
+        try {
+          const p = await Notification.requestPermission();
+          setNotifPerm(p);
+        } catch (e) { /* ignore */ }
+      };
 
       const load = useCallback(async (t, isAuto = false) => {
         const id = ++reqIdRef.current;
@@ -489,6 +536,21 @@
               {dataDate && !marketOpen && (
                 <span className="pill">
                   <span className="num">{dataDate}</span>
+                </span>
+              )}
+              {notifPerm === 'default' && (
+                <span className="pill tap notif-cta" onClick={requestNotif}>
+                  <span className="label">🔔 啟用命中通知</span>
+                </span>
+              )}
+              {notifPerm === 'granted' && (
+                <span className="pill notif-on">
+                  <span className="label">🔔 通知中</span>
+                </span>
+              )}
+              {notifPerm === 'denied' && (
+                <span className="pill notif-off">
+                  <span className="label">🔕 通知封鎖</span>
                 </span>
               )}
             </div>
