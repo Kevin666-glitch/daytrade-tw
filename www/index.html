@@ -313,6 +313,20 @@
         param: { key: 'vol_mul', default: 1.0, min: 0.5, max: 5.0, step: 0.1, label: '量比 vs 前面均量', unit: 'x' },
         ticks: ['0.5x', '1x', '2x', '3x', '5x'],
       },
+      {
+        id: 'selling-exhaustion', label: '賣盡反轉', emoji: '🔨',
+        endpoint: '/api/daytrade/scan/selling-exhaustion',
+        notifTitle: '🔨 賣盤竭盡',
+        param: { key: 'move_pct', default: 1.0, min: 0.5, max: 5.0, step: 0.5, label: '前段跌幅門檻', unit: '%' },
+        ticks: ['0.5%', '1.5%', '2.5%', '3.5%', '5%'],
+      },
+      {
+        id: 'buying-exhaustion', label: '買盡反轉', emoji: '☄️',
+        endpoint: '/api/daytrade/scan/buying-exhaustion',
+        notifTitle: '☄️ 買盤竭盡',
+        param: { key: 'move_pct', default: 1.0, min: 0.5, max: 5.0, step: 0.5, label: '前段漲幅門檻', unit: '%' },
+        ticks: ['0.5%', '1.5%', '2.5%', '3.5%', '5%'],
+      },
     ];
 
     const STRATEGY_BY_ID = Object.fromEntries(STRATEGIES.map(s => [s.id, s]));
@@ -451,6 +465,16 @@
           mainUnit = '%突破';
           midLine = `過 ${fmtPrice(hit.breakout_from)} · 量比 ${hit.volume_ratio?.toFixed(1)}x`;
           break;
+        case 'selling-exhaustion':
+          mainVal = hit.shadow_pct?.toFixed(0) ?? '—';
+          mainUnit = '%下影';
+          midLine = `前段 ${hit.seg_move_pct?.toFixed(1)}% · ${hit.bullish_close ? '收紅' : '收黑'}`;
+          break;
+        case 'buying-exhaustion':
+          mainVal = hit.shadow_pct?.toFixed(0) ?? '—';
+          mainUnit = '%上影';
+          midLine = `前段 +${hit.seg_move_pct?.toFixed(1)}% · ${hit.bearish_close ? '收黑' : '收紅'}`;
+          break;
         default:
           mainVal = '—'; mainUnit = ''; midLine = '';
       }
@@ -538,6 +562,10 @@
               detail = ` 跳空 +${h.gap_pct?.toFixed(2)}%`;
             } else if (selectedId === 'intraday-breakout') {
               detail = ` 突破 +${h.breakout_pct?.toFixed(2)}%`;
+            } else if (selectedId === 'selling-exhaustion') {
+              detail = ` 前段 ${h.seg_move_pct?.toFixed(1)}% 錘子`;
+            } else if (selectedId === 'buying-exhaustion') {
+              detail = ` 前段 +${h.seg_move_pct?.toFixed(1)}% 流星`;
             }
             new Notification(strategy.notifTitle, {
               body:  `${h.id} ${h.name} ${detail}${chgStr}`,
