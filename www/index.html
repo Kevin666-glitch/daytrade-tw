@@ -25,7 +25,7 @@
 
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
 
   <style>
     :root {
@@ -254,7 +254,7 @@
 <body>
   <div id="root"></div>
 
-  <script type="text/babel" data-presets="react,env">
+  <script type="text/babel" data-presets="react">
     const { useState, useEffect, useRef, useCallback } = React;
     const API_BASES = window.API_BASES;
 
