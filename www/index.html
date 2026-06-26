@@ -120,6 +120,32 @@
     .pill.notif-on .label { color: var(--up); }
     .pill.notif-off .label { color: var(--text-faint); }
 
+    /* Strategy tabs */
+    .strategy-tabs {
+      display: flex; gap: 6px; margin: 16px 0 0;
+      overflow-x: auto; padding-bottom: 4px;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .strategy-tabs::-webkit-scrollbar { display: none; }
+    .strategy-tab {
+      flex: 0 0 auto;
+      background: var(--surface); backdrop-filter: blur(24px) saturate(140%);
+      -webkit-backdrop-filter: blur(24px) saturate(140%);
+      border: 1px solid var(--hairline); border-radius: 12px;
+      padding: 9px 13px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 5px;
+      color: var(--text-dim); font-size: 13px; font-weight: 500;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .strategy-tab:active { transform: scale(0.97); }
+    .strategy-tab.active {
+      background: var(--brand-dim); border-color: var(--brand); color: var(--text);
+    }
+    .strategy-tab .tab-emoji { font-size: 14px; line-height: 1; }
+    .strategy-tab .tab-label { font-variant-numeric: tabular-nums; }
+
     /* Threshold control */
     .threshold-card {
       margin: 16px 0 18px;
@@ -258,6 +284,39 @@
     const { useState, useEffect, useRef, useCallback } = React;
     const API_BASES = window.API_BASES;
 
+    const STRATEGIES = [
+      {
+        id: 'opening-volume-burst', label: '量比爆量', emoji: '🔥',
+        endpoint: '/api/daytrade/scan/opening-volume-burst',
+        notifTitle: '🔥 開盤量比爆量',
+        param: { key: 'threshold', default: 3.0, min: 1.5, max: 10, step: 0.5, label: '量比門檻', unit: '倍' },
+        ticks: ['1.5x', '3x', '5x', '7x', '10x'],
+      },
+      {
+        id: 'vwap-reversal', label: 'VWAP↗', emoji: '↗️',
+        endpoint: '/api/daytrade/scan/vwap-reversal',
+        notifTitle: '↗️ VWAP 反轉',
+        param: { key: 'vol_mul', default: 1.5, min: 1.0, max: 5.0, step: 0.1, label: '量比 vs 5m 均量', unit: 'x' },
+        ticks: ['1x', '2x', '3x', '4x', '5x'],
+      },
+      {
+        id: 'gap-up-continuation', label: '跳空接力', emoji: '⏫',
+        endpoint: '/api/daytrade/scan/gap-up-continuation',
+        notifTitle: '⏫ 跳空接力',
+        param: { key: 'gap_pct', default: 2.0, min: 1.0, max: 10, step: 0.5, label: '跳空門檻', unit: '%' },
+        ticks: ['1%', '3%', '5%', '7%', '10%'],
+      },
+      {
+        id: 'intraday-breakout', label: '盤中突破', emoji: '🚀',
+        endpoint: '/api/daytrade/scan/intraday-breakout',
+        notifTitle: '🚀 5分K 突破前高',
+        param: { key: 'vol_mul', default: 1.0, min: 0.5, max: 5.0, step: 0.1, label: '量比 vs 前面均量', unit: 'x' },
+        ticks: ['0.5x', '1x', '2x', '3x', '5x'],
+      },
+    ];
+
+    const STRATEGY_BY_ID = Object.fromEntries(STRATEGIES.map(s => [s.id, s]));
+
     function apiFetch(path) {
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 30000);
@@ -319,50 +378,92 @@
       );
     }
 
-    function ThresholdCard({ value, onChange }) {
-      const pct = ((value - 1.5) / (10 - 1.5)) * 100;
+    function StrategyTabs({ selectedId, onSelect }) {
+      return (
+        <div className="strategy-tabs">
+          {STRATEGIES.map(s => (
+            <button
+              key={s.id}
+              className={`strategy-tab ${s.id === selectedId ? 'active' : ''}`}
+              onClick={() => onSelect(s.id)}
+            >
+              <span className="tab-emoji">{s.emoji}</span>
+              <span className="tab-label">{s.label}</span>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    function ParamCard({ strategy, value, onChange }) {
+      const p = strategy.param;
+      const pct = ((value - p.min) / (p.max - p.min)) * 100;
       return (
         <div className="threshold-card">
           <div className="threshold-head">
-            <span className="threshold-label">量比門檻</span>
+            <span className="threshold-label">{p.label}</span>
             <span className="threshold-value num">
-              {value.toFixed(1)}<small>倍</small>
+              {value.toFixed(p.step < 0.5 ? 1 : 1)}<small>{p.unit}</small>
             </span>
           </div>
           <input
             type="range" className="slider"
-            min="1.5" max="10" step="0.5"
+            min={p.min} max={p.max} step={p.step}
             value={value}
             onChange={(e) => onChange(parseFloat(e.target.value))}
             style={{ '--pct': pct + '%' }}
           />
           <div className="slider-ticks">
-            <span>1.5x</span><span>3x</span><span>5x</span><span>7x</span><span>10x</span>
+            {strategy.ticks.map((t, i) => <span key={i}>{t}</span>)}
           </div>
         </div>
       );
     }
 
-    function HitCard({ hit }) {
+    function HitCard({ hit, strategy }) {
       const cp = hit.change_pct;
       let chgCls = 'flat', chgTxt = '0.00%';
       if (cp != null) {
         if (cp > 0) { chgCls = 'up'; chgTxt = `+${cp.toFixed(2)}%`; }
         else if (cp < 0) { chgCls = 'down'; chgTxt = `${cp.toFixed(2)}%`; }
       }
+
+      // 左側「主指標」+ 中間「細節」依策略而異
+      let mainVal, mainUnit, midLine;
+      switch (strategy.id) {
+        case 'opening-volume-burst':
+          mainVal = hit.volume_ratio?.toFixed(1) ?? '—';
+          mainUnit = '倍量';
+          midLine = `${fmtVol(hit.today_volume)} / 均 ${fmtVol(hit.baseline_volume)}`;
+          break;
+        case 'vwap-reversal':
+          mainVal = hit.volume_ratio?.toFixed(1) ?? '—';
+          mainUnit = '倍量';
+          midLine = `VWAP ${hit.vwap?.toFixed(2)} · ${hit.vwap_diff_pct >= 0 ? '+' : ''}${hit.vwap_diff_pct?.toFixed(2)}%`;
+          break;
+        case 'gap-up-continuation':
+          mainVal = '+' + (hit.gap_pct?.toFixed(1) ?? '—');
+          mainUnit = '%跳空';
+          midLine = `開 ${fmtPrice(hit.day_open)} · 守 ${fmtPrice(hit.early_low)}`;
+          break;
+        case 'intraday-breakout':
+          mainVal = '+' + (hit.breakout_pct?.toFixed(2) ?? '—');
+          mainUnit = '%突破';
+          midLine = `過 ${fmtPrice(hit.breakout_from)} · 量比 ${hit.volume_ratio?.toFixed(1)}x`;
+          break;
+        default:
+          mainVal = '—'; mainUnit = ''; midLine = '';
+      }
+
       return (
         <div className="hit">
           <div className="hit-ratio">
-            <div className="v num">{hit.volume_ratio.toFixed(1)}</div>
-            <div className="u">倍量</div>
+            <div className="v num">{mainVal}</div>
+            <div className="u">{mainUnit}</div>
           </div>
           <div className="hit-mid">
             <div className="hit-name">{hit.name}<span className="hit-id mono">{hit.id}</span></div>
-            <div className="hit-vol mono">
-              {fmtVol(hit.today_volume)}
-              <span className="sep">/</span>
-              均 {fmtVol(hit.baseline_volume)}
-            </div>
+            <div className="hit-vol mono">{midLine}</div>
           </div>
           <div className="hit-right">
             <div className="hit-price num">{fmtPrice(hit.price)}</div>
@@ -384,11 +485,19 @@
     }
 
     function App() {
+      const [selectedId, setSelectedId] = useState(STRATEGIES[0].id);
+      // 每個策略有獨立 param value（切回去保留你調過的設定）
+      const [paramValues, setParamValues] = useState(
+        Object.fromEntries(STRATEGIES.map(s => [s.id, s.param.default]))
+      );
+      const strategy = STRATEGY_BY_ID[selectedId];
+      const paramValue = paramValues[selectedId];
+      const setParamValue = (v) => setParamValues(p => ({ ...p, [selectedId]: v }));
+
       const [hits, setHits] = useState([]);
       const [loading, setLoading] = useState(true);
       const [refreshing, setRefreshing] = useState(false);
       const [error, setError] = useState(null);
-      const [threshold, setThreshold] = useState(3.0);
       const [status, setStatus] = useState(null);
       const [marketOpen, setMarketOpen] = useState(false);
       const [universeSize, setUniverseSize] = useState(50);
@@ -406,32 +515,40 @@
       const seenHitsRef  = useRef(new Set());
       const firstLoadRef = useRef(true);
 
-      // 通知 effect — 偵測新命中（不在已知 set 裡）就彈 Notification
-      // 初次載入：populate set、不發通知（避免每次開 app 一次彈一堆）
+      // 通知 effect — 偵測新命中（不在 strategy-namespaced seen set 裡）就彈
       useEffect(() => {
         if (firstLoadRef.current) {
           firstLoadRef.current = false;
-          hits.forEach(h => seenHitsRef.current.add(h.id));
+          hits.forEach(h => seenHitsRef.current.add(`${selectedId}:${h.id}`));
           return;
         }
         if (notifPerm !== 'granted' || !marketOpen) return;
 
-        const newHits = hits.filter(h => !seenHitsRef.current.has(h.id));
+        const newHits = hits.filter(h => !seenHitsRef.current.has(`${selectedId}:${h.id}`));
         newHits.forEach(h => {
-          seenHitsRef.current.add(h.id);
+          seenHitsRef.current.add(`${selectedId}:${h.id}`);
           try {
             const chg = h.change_pct;
             const chgStr = chg == null ? '' : (chg >= 0 ? ` +${chg.toFixed(2)}%` : ` ${chg.toFixed(2)}%`);
-            new Notification('🔥 開盤量比爆量', {
-              body:  `${h.id} ${h.name}  量比 ${h.volume_ratio.toFixed(2)}x${chgStr}`,
-              tag:   `daytrade-${h.id}`,
+            // 各策略的主指標摘要
+            let detail = '';
+            if (selectedId === 'opening-volume-burst' || selectedId === 'vwap-reversal') {
+              detail = ` 量比 ${h.volume_ratio?.toFixed(2)}x`;
+            } else if (selectedId === 'gap-up-continuation') {
+              detail = ` 跳空 +${h.gap_pct?.toFixed(2)}%`;
+            } else if (selectedId === 'intraday-breakout') {
+              detail = ` 突破 +${h.breakout_pct?.toFixed(2)}%`;
+            }
+            new Notification(strategy.notifTitle, {
+              body:  `${h.id} ${h.name} ${detail}${chgStr}`,
+              tag:   `daytrade-${selectedId}-${h.id}`,
               icon:  '/icon-192.png',
               badge: '/icon-192.png',
               silent: false,
             });
           } catch (e) { /* iOS Safari may throw outside PWA */ }
         });
-      }, [hits, notifPerm, marketOpen]);
+      }, [hits, notifPerm, marketOpen, selectedId, strategy.notifTitle]);
 
       const requestNotif = async () => {
         if (typeof Notification === 'undefined') return;
@@ -441,12 +558,14 @@
         } catch (e) { /* ignore */ }
       };
 
-      const load = useCallback(async (t, isAuto = false) => {
+      const load = useCallback(async (sid, v, isAuto = false) => {
+        const s = STRATEGY_BY_ID[sid];
         const id = ++reqIdRef.current;
         if (isAuto) setRefreshing(true); else setLoading(true);
         setError(null);
         try {
-          const d = await apiFetch(`/api/daytrade/scan/opening-volume-burst?threshold=${t.toFixed(1)}`);
+          const url = `${s.endpoint}?${s.param.key}=${v.toFixed(1)}`;
+          const d = await apiFetch(url);
           if (id !== reqIdRef.current) return;
           setStatus(d.status);
           setHits(d.hits || []);
@@ -466,18 +585,26 @@
         }
       }, []);
 
-      useEffect(() => { load(threshold, false); }, []);
+      useEffect(() => { load(selectedId, paramValue, false); }, []);
 
       useEffect(() => {
-        const t = setTimeout(() => load(threshold, false), 350);
+        // 切策略時：reset firstLoad（initial 不發通知）+ 重抓
+        firstLoadRef.current = true;
+        setHits([]);
+        const t = setTimeout(() => load(selectedId, paramValue, false), 200);
         return () => clearTimeout(t);
-      }, [threshold]);
+      }, [selectedId]);
+
+      useEffect(() => {
+        const t = setTimeout(() => load(selectedId, paramValue, false), 350);
+        return () => clearTimeout(t);
+      }, [paramValue]);
 
       useEffect(() => {
         if (!marketOpen) return;
-        const iv = setInterval(() => load(threshold, true), 60_000);
+        const iv = setInterval(() => load(selectedId, paramValue, true), 60_000);
         return () => clearInterval(iv);
-      }, [marketOpen, threshold, load]);
+      }, [marketOpen, selectedId, paramValue, load]);
 
       const renderBody = () => {
         if (loading && hits.length === 0) {
@@ -492,13 +619,13 @@
         if (error) {
           return <State emoji="⚠️" title="連線失敗"
             body={`無法連到 Mac backend。確認 Mac 開機 + ngrok 在跑。\n錯誤: ${error}`}
-            action={<button className="btn-retry" onClick={() => load(threshold, false)}>重試</button>}
+            action={<button className="btn-retry" onClick={() => load(selectedId, paramValue, false)}>重試</button>}
           />;
         }
         if (status === 'render-not-supported') {
           return <State emoji="🔌" title="Mac backend 不可用"
             body="當沖掃描需 yfinance 即時資料源，Render 上資料源被擋。請確認 Mac+ngrok 在線。"
-            action={<button className="btn-retry" onClick={() => load(threshold, false)}>重試</button>}
+            action={<button className="btn-retry" onClick={() => load(selectedId, paramValue, false)}>重試</button>}
           />;
         }
         if (status === 'pre-market') {
@@ -507,11 +634,11 @@
         }
         if (hits.length === 0) {
           const hint = marketOpen
-            ? `這個門檻下還沒有股票觸發。試試降低量比，或等量能累積。`
-            : `${dataDate ? dataDate + ' 收盤' : '最近交易日'}全日量比未達 ${threshold.toFixed(1)} 倍。試試降低門檻。`;
+            ? `這個條件下還沒有股票觸發。試試調整門檻，或等量能累積。`
+            : `${dataDate ? dataDate + ' 收盤' : '最近交易日'}全日沒有命中此策略。試試調整門檻。`;
           return <State emoji="🌙" title="目前沒有命中" body={hint} />;
         }
-        return hits.map(h => <HitCard key={h.id} hit={h} />);
+        return hits.map(h => <HitCard key={h.id} hit={h} strategy={strategy} />);
       };
 
       return (
@@ -521,7 +648,7 @@
               <div className="title">當沖<em>掃描</em></div>
               {refreshing && <span className="spin" />}
             </div>
-            <div className="subtitle">開盤量比爆量 — 台灣 50 ({universeSize})</div>
+            <div className="subtitle">{strategy.emoji} {strategy.label} — 台灣 50 ({universeSize})</div>
 
             <div className="status-row">
               <MarketPill status={status} marketOpen={marketOpen} />
@@ -530,7 +657,7 @@
                   <span className="label num">{untilTime}</span>
                 </span>
               )}
-              <span className="pill tap" onClick={() => load(threshold, false)}>
+              <span className="pill tap" onClick={() => load(selectedId, paramValue, false)}>
                 <span className="num">{lastFetch ? fmtRelative(lastFetch) : '—'}</span>
               </span>
               {dataDate && !marketOpen && (
@@ -556,7 +683,9 @@
             </div>
           </div>
 
-          <ThresholdCard value={threshold} onChange={setThreshold} />
+          <StrategyTabs selectedId={selectedId} onSelect={setSelectedId} />
+
+          <ParamCard strategy={strategy} value={paramValue} onChange={setParamValue} />
 
           <div className="list-head">
             <span className="list-title">命中列表</span>
@@ -568,7 +697,7 @@
           {renderBody()}
 
           <div className="footer">
-            開盤量 ÷ 過去 5 交易日同時段均量 ≥ {threshold.toFixed(1)} 倍 · 60s 自動刷新
+            {strategy.emoji} {strategy.label} · {strategy.param.label} {paramValue.toFixed(1)}{strategy.param.unit} · 60s 自動刷新
           </div>
         </div>
       );
